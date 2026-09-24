@@ -27,11 +27,6 @@
 #include <linux/input.h>
 #include <linux/uinput.h>
 
-/* Границы каждой оси и шаг за одно нажатие (5% от 65535 — полного диапазона). */
-#define AXIS_MIN   (-32768)
-#define AXIS_MAX   32767
-#define AXIS_STEP  3276
-
 #define MAX_DEVICES 16
 
 /* Оси виртуального джойстика: X, Y, Z — поверхности самолёта, RZ — тяга. */
@@ -45,8 +40,33 @@ enum axis {
 
 static const __u16 axis_code[AX_COUNT] = { ABS_X, ABS_Y, ABS_Z, ABS_RZ };
 
-/* Текущее положение осей: стартовое — 0 (центр), дальше хранится до выхода. */
-static int axis_value[AX_COUNT];
+/* Шаг каждой оси за одно нажатие — задаётся отдельно для каждой оси. */
+static const int axis_step[AX_COUNT] = {
+	3276,	/* AX_X        — 5% диапазона */
+	3276,	/* AX_Y        — 5% */
+	1310,	/* AX_Z        — 2% */
+	2600	/* AX_THROTTLE — 4% */
+};
+
+/*
+ * Рабочие границы осей — целое число шагов от стартового положения:
+ *   X, Y: ±10×3276 = ±32760;
+ *   Z:    ±25×1310 = ±32750;
+ *   тяга: старт −32768 (минимум), максимум −32768+25×2600 = 32232.
+ *
+ * Эти же числа объявляются потребителям через UI_ABS_SETUP, поэтому
+ * SDL/игра видят достижимый диапазон и полный ход = 100%. Нажатие за
+ * границей упирается в сеточную точку — сетка не смещается, из любого
+ * упора набором шагов можно вернуться в 0 (для осей с командой сброса).
+ */
+static const int axis_min[AX_COUNT] = { -32760, -32760, -32750, -32768 };
+static const int axis_max[AX_COUNT] = {  32760,  32760,  32750,  32232 };
+
+/*
+ * Текущее положение осей, хранится пока работает программа:
+ * X, Y, Z стартуют в центре (0), тяга — на своём минимуме (газ убран).
+ */
+static int axis_value[AX_COUNT] = { 0, 0, 0, -32768 };
 
 /* fd виртуального устройства, куда пишутся события осей. */
 static int uinput_fd = -1;
@@ -63,8 +83,7 @@ enum command {
 	CMD_Z_DOWN,
 	CMD_Z_CENTER,
 	CMD_THROTTLE_UP,
-	CMD_THROTTLE_DOWN,
-	CMD_THROTTLE_CENTER
+	CMD_THROTTLE_DOWN
 };
 
 /*
@@ -84,9 +103,8 @@ static const struct binding {
 	{ KEY_KP1,    CMD_Z_DOWN },
 	{ KEY_KP7,    CMD_Z_CENTER },
 	{ KEY_KP3,    CMD_Z_UP },
-	{ KEY_KP0,    CMD_THROTTLE_DOWN },
-	{ KEY_KPPLUS, CMD_THROTTLE_CENTER },
-	{ KEY_KPDOT,  CMD_THROTTLE_UP }
+	{ KEY_KPENTER, CMD_THROTTLE_DOWN },
+	{ KEY_KPPLUS,  CMD_THROTTLE_UP }
 };
 
 #define BINDINGS_COUNT ((int)(sizeof bindings / sizeof bindings[0]))
@@ -104,12 +122,16 @@ static const struct binding {
  */
 static unsigned long pressed[LONG_COUNT(KEY_MAX + 1)];
 
-static int clamp_axis(int value)
+/*
+ * Ограничение сеточной границей оси. Граница сама кратна шагу, поэтому
+ * clamp не может сместить сетку: значение всегда = старт + n×шаг.
+ */
+static int clamp_axis(enum axis axis, int value)
 {
-	if (value < AXIS_MIN)
-		return AXIS_MIN;
-	if (value > AXIS_MAX)
-		return AXIS_MAX;
+	if (value < axis_min[axis])
+		return axis_min[axis];
+	if (value > axis_max[axis])
+		return axis_max[axis];
 	return value;
 }
 
@@ -142,11 +164,11 @@ static void apply_command(enum command cmd)
 	switch (cmd) {
 	case CMD_X_UP:
 		axis = AX_X;
-		value = axis_value[AX_X] + AXIS_STEP;
+		value = axis_value[AX_X] + axis_step[AX_X];
 		break;
 	case CMD_X_DOWN:
 		axis = AX_X;
-		value = axis_value[AX_X] - AXIS_STEP;
+		value = axis_value[AX_X] - axis_step[AX_X];
 		break;
 	case CMD_X_CENTER:
 		axis = AX_X;
@@ -154,11 +176,11 @@ static void apply_command(enum command cmd)
 		break;
 	case CMD_Y_UP:
 		axis = AX_Y;
-		value = axis_value[AX_Y] + AXIS_STEP;
+		value = axis_value[AX_Y] + axis_step[AX_Y];
 		break;
 	case CMD_Y_DOWN:
 		axis = AX_Y;
-		value = axis_value[AX_Y] - AXIS_STEP;
+		value = axis_value[AX_Y] - axis_step[AX_Y];
 		break;
 	case CMD_Y_CENTER:
 		axis = AX_Y;
@@ -166,11 +188,11 @@ static void apply_command(enum command cmd)
 		break;
 	case CMD_Z_UP:
 		axis = AX_Z;
-		value = axis_value[AX_Z] + AXIS_STEP;
+		value = axis_value[AX_Z] + axis_step[AX_Z];
 		break;
 	case CMD_Z_DOWN:
 		axis = AX_Z;
-		value = axis_value[AX_Z] - AXIS_STEP;
+		value = axis_value[AX_Z] - axis_step[AX_Z];
 		break;
 	case CMD_Z_CENTER:
 		axis = AX_Z;
@@ -178,19 +200,15 @@ static void apply_command(enum command cmd)
 		break;
 	case CMD_THROTTLE_UP:
 		axis = AX_THROTTLE;
-		value = axis_value[AX_THROTTLE] + AXIS_STEP;
+		value = axis_value[AX_THROTTLE] + axis_step[AX_THROTTLE];
 		break;
 	case CMD_THROTTLE_DOWN:
 		axis = AX_THROTTLE;
-		value = axis_value[AX_THROTTLE] - AXIS_STEP;
-		break;
-	case CMD_THROTTLE_CENTER:
-		axis = AX_THROTTLE;
-		value = 0;
+		value = axis_value[AX_THROTTLE] - axis_step[AX_THROTTLE];
 		break;
 	}
 
-	value = clamp_axis(value);
+	value = clamp_axis(axis, value);
 
 	/* Ось уже упёрлась в границу — новое событие не нужно. */
 	if (value == axis_value[axis])
@@ -300,7 +318,7 @@ static int open_keyboards(int *fds)
 	return n;
 }
 
-/* Создание виртуального джойстика: 4 оси ABS в диапазоне AXIS_MIN..AXIS_MAX. */
+/* Создание виртуального джойстика: 4 оси ABS с сеточными границами axis_min/axis_max. */
 static int setup_uinput(void)
 {
 	struct uinput_setup setup;
@@ -327,6 +345,23 @@ static int setup_uinput(void)
 		}
 	}
 
+	/*
+	 * Capability-кнопка BTN_TRIGGER: реальных нажатий не бывает, она нужна
+	 * только для классификации. Устройство из одних осей udev относит к
+	 * акселерометрам (ID_INPUT_ACCELEROMETER), и SDL/Steam не видят в нём
+	 * джойстик; с кнопкой ставится ID_INPUT_JOYSTICK.
+	 */
+	if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) {
+		perror("ioctl UI_SET_EVBIT EV_KEY");
+		close(fd);
+		return -1;
+	}
+	if (ioctl(fd, UI_SET_KEYBIT, BTN_TRIGGER) < 0) {
+		perror("ioctl UI_SET_KEYBIT BTN_TRIGGER");
+		close(fd);
+		return -1;
+	}
+
 	memset(&setup, 0, sizeof setup);
 	setup.id.bustype = BUS_USB;
 	setup.id.vendor = 0x1234;
@@ -341,8 +376,8 @@ static int setup_uinput(void)
 	for (i = 0; i < AX_COUNT; i++) {
 		memset(&abs, 0, sizeof abs);
 		abs.code = axis_code[i];
-		abs.absinfo.minimum = AXIS_MIN;
-		abs.absinfo.maximum = AXIS_MAX;
+		abs.absinfo.minimum = axis_min[i];
+		abs.absinfo.maximum = axis_max[i];
 		abs.absinfo.value = axis_value[i];
 		if (ioctl(fd, UI_ABS_SETUP, &abs) < 0) {
 			perror("ioctl UI_ABS_SETUP");

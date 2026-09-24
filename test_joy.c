@@ -25,7 +25,7 @@ static void center_all(void)
 	axis_value[AX_X] = 0;
 	axis_value[AX_Y] = 0;
 	axis_value[AX_Z] = 0;
-	axis_value[AX_THROTTLE] = 0;
+	/* Тягу не трогаем — она хранит своё стартовое значение. */
 }
 
 int main(void)
@@ -35,11 +35,11 @@ int main(void)
 	uinput_fd = open("/dev/null", O_WRONLY);
 	assert(uinput_fd >= 0);
 
-	/* Стартовое состояние — все оси в центре. */
+	/* Стартовое состояние: X, Y, Z в центре, тяга — на минимуме. */
 	assert(axis_value[AX_X] == 0);
 	assert(axis_value[AX_Y] == 0);
 	assert(axis_value[AX_Z] == 0);
-	assert(axis_value[AX_THROTTLE] == 0);
+	assert(axis_value[AX_THROTTLE] == AXIS_MIN);
 
 	/* Шаг ±3276. */
 	apply_command(CMD_X_DOWN);
@@ -118,7 +118,7 @@ int main(void)
 	ie = key_event(KEY_KP1, 0);
 	handle_event(&ie);
 	assert(axis_value[AX_Y] == -3276);
-	assert(axis_value[AX_Z] == -3276);
+	assert(axis_value[AX_Z] == -1310);	/* шаг Z — 2% */
 	ie = key_event(KEY_KP7, 1);
 	handle_event(&ie);
 	assert(axis_value[AX_Y] == 0);
@@ -126,24 +126,28 @@ int main(void)
 	ie = key_event(KEY_KP7, 0);
 	handle_event(&ie);
 
-	/* Тяга: вниз ×2, чуть вверх, сброс. */
-	ie = key_event(KEY_KP0, 1);
+	/* Тяга: старт на минимуме, шаг 2600, сброса нет. */
+	assert(axis_value[AX_THROTTLE] == AXIS_MIN);
+	ie = key_event(KEY_KPENTER, 1);	/* уменьшить — от минимума не двигается */
 	handle_event(&ie);
-	ie = key_event(KEY_KP0, 0);
+	ie = key_event(KEY_KPENTER, 0);
 	handle_event(&ie);
-	ie = key_event(KEY_KP0, 1);
+	assert(axis_value[AX_THROTTLE] == AXIS_MIN);
+	ie = key_event(KEY_KPPLUS, 1);	/* увеличить */
 	handle_event(&ie);
-	ie = key_event(KEY_KP0, 0);
+	ie = key_event(KEY_KPPLUS, 0);
 	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == -6552);
-	ie = key_event(KEY_KPDOT, 1);	/* NumDel = KEY_KPDOT */
+	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 2600);
+	ie = key_event(KEY_KPPLUS, 1);	/* ещё увеличить */
 	handle_event(&ie);
-	ie = key_event(KEY_KPDOT, 0);
+	ie = key_event(KEY_KPPLUS, 0);
 	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == -3276);
-	ie = key_event(KEY_KPPLUS, 1);
+	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 5200);
+	ie = key_event(KEY_KPENTER, 1);	/* уменьшить */
 	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == 0);
+	ie = key_event(KEY_KPENTER, 0);
+	handle_event(&ie);
+	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 2600);
 
 	/* Клавиша вне раскладки не двигает оси. */
 	ie = key_event(KEY_A, 1);
@@ -151,7 +155,7 @@ int main(void)
 	assert(axis_value[AX_X] == 0);
 	assert(axis_value[AX_Y] == 0);
 	assert(axis_value[AX_Z] == 0);
-	assert(axis_value[AX_THROTTLE] == 0);
+	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 2600);
 
 	close(uinput_fd);
 	printf("все проверки пройдены\n");
