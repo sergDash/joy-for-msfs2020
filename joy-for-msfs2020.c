@@ -70,8 +70,6 @@ enum command {
 /*
  * Раскладка, вшитая в код. Одна клавиша может встречаться несколько раз:
  * Num7 выдаёт две команды — сброс Y и сброс Z.
- * «NumDel» — клавиша NumPad «.»: в ядре нет KEY_KPDEL, физическая клавиша
- * шлёт KEY_KPDOT.
  */
 static const struct binding {
 	int key;
