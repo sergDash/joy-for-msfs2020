@@ -41,40 +41,40 @@ int main(void)
 	assert(axis_value[AX_Z] == 0);
 	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
 
-	/* Шаг ±3276. */
+	/* Шаг ±9830 (15% для X). */
 	apply_command(CMD_X_DOWN);
-	assert(axis_value[AX_X] == -3276);
+	assert(axis_value[AX_X] == -9830);
 	apply_command(CMD_X_UP);
 	assert(axis_value[AX_X] == 0);
 	apply_command(CMD_X_UP);
-	assert(axis_value[AX_X] == 3276);
+	assert(axis_value[AX_X] == 9830);
 	apply_command(CMD_X_CENTER);
 	assert(axis_value[AX_X] == 0);
 
-	/* Границы X = ±10 шагов = ±32760; нажатие за границей игнорируется. */
+	/* Границы X = ±3 шагов = ±29490; нажатие за границей игнорируется. */
 	{
 		int i;
 
-		for (i = 0; i < 10; i++)
+		for (i = 0; i < 3; i++)
 			apply_command(CMD_X_DOWN);
-		assert(axis_value[AX_X] == -32760);
+		assert(axis_value[AX_X] == -29490);
 		apply_command(CMD_X_DOWN);	/* за границей — без изменений */
-		assert(axis_value[AX_X] == -32760);
+		assert(axis_value[AX_X] == -29490);
 		/* Сетка сохранилась: из упора набором шагов — возврат в 0. */
-		for (i = 0; i < 10; i++)
+		for (i = 0; i < 3; i++)
 			apply_command(CMD_X_UP);
 		assert(axis_value[AX_X] == 0);
 	}
 
-	/* Граница сверху: 10 шагов → 32760, дальше игнор. */
+	/* Граница сверху: 3 шага → 29490, дальше игнор. */
 	{
 		int i;
 
-		for (i = 0; i < 10; i++)
+		for (i = 0; i < 3; i++)
 			apply_command(CMD_X_UP);
-		assert(axis_value[AX_X] == 32760);
+		assert(axis_value[AX_X] == 29490);
 		apply_command(CMD_X_UP);
-		assert(axis_value[AX_X] == 32760);
+		assert(axis_value[AX_X] == 29490);
 	}
 	center_all();
 
@@ -92,23 +92,37 @@ int main(void)
 		assert(axis_value[AX_Z] == 0);
 	}
 
+	/* Границы Y = ±25 шагов = ±32750 (шаг как у Z — 1310). */
+	{
+		int i;
+
+		for (i = 0; i < 25; i++)
+			apply_command(CMD_Y_DOWN);
+		assert(axis_value[AX_Y] == -32750);
+		apply_command(CMD_Y_DOWN);
+		assert(axis_value[AX_Y] == -32750);
+		for (i = 0; i < 25; i++)
+			apply_command(CMD_Y_UP);
+		assert(axis_value[AX_Y] == 0);
+	}
+
 	/* Обработка событий: только нажатие (value == 1). */
 	ie = key_event(KEY_KP4, 1);
 	handle_event(&ie);
-	assert(axis_value[AX_X] == -3276);
+	assert(axis_value[AX_X] == -9830);
 
 	ie = key_event(KEY_KP4, 2);	/* автоповтор — игнор */
 	handle_event(&ie);
-	assert(axis_value[AX_X] == -3276);
+	assert(axis_value[AX_X] == -9830);
 
 	ie = key_event(KEY_KP4, 0);	/* отпускание — только сброс бита */
 	handle_event(&ie);
-	assert(axis_value[AX_X] == -3276);
+	assert(axis_value[AX_X] == -9830);
 
 	/* Двойной down без release (два устройства об одной клавише) — один шаг. */
 	ie = key_event(KEY_KP6, 1);
 	handle_event(&ie);
-	assert(axis_value[AX_X] == 0);		/* -3276 + 3276 */
+	assert(axis_value[AX_X] == 0);		/* -9830 + 9830 */
 	ie = key_event(KEY_KP6, 1);
 	handle_event(&ie);
 	assert(axis_value[AX_X] == 0);		/* дубль проигнорирован */
@@ -118,7 +132,7 @@ int main(void)
 	handle_event(&ie);
 	ie = key_event(KEY_KP6, 1);
 	handle_event(&ie);
-	assert(axis_value[AX_X] == 3276);
+	assert(axis_value[AX_X] == 9830);
 	ie = key_event(KEY_KP6, 0);
 	handle_event(&ie);
 	apply_command(CMD_X_CENTER);
@@ -133,7 +147,7 @@ int main(void)
 	handle_event(&ie);
 	ie = key_event(KEY_KP1, 0);
 	handle_event(&ie);
-	assert(axis_value[AX_Y] == -3276);
+	assert(axis_value[AX_Y] == -1310);	/* шаг Y — 2% */
 	assert(axis_value[AX_Z] == -1310);	/* шаг Z — 2% */
 	ie = key_event(KEY_KP7, 1);
 	handle_event(&ie);
