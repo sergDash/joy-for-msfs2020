@@ -35,11 +35,11 @@ int main(void)
 	uinput_fd = open("/dev/null", O_WRONLY);
 	assert(uinput_fd >= 0);
 
-	/* Стартовое состояние: X, Y, Z в центре, тяга — на минимуме. */
+	/* Стартовое состояние: X, Y, Z в центре, тяга — на своём минимуме. */
 	assert(axis_value[AX_X] == 0);
 	assert(axis_value[AX_Y] == 0);
 	assert(axis_value[AX_Z] == 0);
-	assert(axis_value[AX_THROTTLE] == AXIS_MIN);
+	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
 
 	/* Шаг ±3276. */
 	apply_command(CMD_X_DOWN);
@@ -51,30 +51,46 @@ int main(void)
 	apply_command(CMD_X_CENTER);
 	assert(axis_value[AX_X] == 0);
 
-	/* Ограничение нижней границей: 11 шагов вниз из 0 → -32768. */
+	/* Границы X = ±10 шагов = ±32760; нажатие за границей игнорируется. */
 	{
 		int i;
 
-		for (i = 0; i < 11; i++)
+		for (i = 0; i < 10; i++)
 			apply_command(CMD_X_DOWN);
-		assert(axis_value[AX_X] == -32768);
-		apply_command(CMD_X_DOWN);	/* упёрлась — без изменений */
-		assert(axis_value[AX_X] == -32768);
-		apply_command(CMD_X_CENTER);
+		assert(axis_value[AX_X] == -32760);
+		apply_command(CMD_X_DOWN);	/* за границей — без изменений */
+		assert(axis_value[AX_X] == -32760);
+		/* Сетка сохранилась: из упора набором шагов — возврат в 0. */
+		for (i = 0; i < 10; i++)
+			apply_command(CMD_X_UP);
 		assert(axis_value[AX_X] == 0);
 	}
 
-	/* Ограничение верхней границей. */
+	/* Граница сверху: 10 шагов → 32760, дальше игнор. */
 	{
 		int i;
 
-		for (i = 0; i < 11; i++)
+		for (i = 0; i < 10; i++)
 			apply_command(CMD_X_UP);
-		assert(axis_value[AX_X] == 32767);
+		assert(axis_value[AX_X] == 32760);
 		apply_command(CMD_X_UP);
-		assert(axis_value[AX_X] == 32767);
+		assert(axis_value[AX_X] == 32760);
 	}
 	center_all();
+
+	/* Границы Z = ±25 шагов = ±32750, возврат в 0 набором шагов. */
+	{
+		int i;
+
+		for (i = 0; i < 25; i++)
+			apply_command(CMD_Z_DOWN);
+		assert(axis_value[AX_Z] == -32750);
+		apply_command(CMD_Z_DOWN);
+		assert(axis_value[AX_Z] == -32750);
+		for (i = 0; i < 25; i++)
+			apply_command(CMD_Z_UP);
+		assert(axis_value[AX_Z] == 0);
+	}
 
 	/* Обработка событий: только нажатие (value == 1). */
 	ie = key_event(KEY_KP4, 1);
@@ -126,28 +142,37 @@ int main(void)
 	ie = key_event(KEY_KP7, 0);
 	handle_event(&ie);
 
-	/* Тяга: старт на минимуме, шаг 2600, сброса нет. */
-	assert(axis_value[AX_THROTTLE] == AXIS_MIN);
+	/* Тяга: старт на минимуме (якорь сетки), шаг 2600, сброса нет. */
+	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+
 	ie = key_event(KEY_KPENTER, 1);	/* уменьшить — от минимума не двигается */
 	handle_event(&ie);
 	ie = key_event(KEY_KPENTER, 0);
 	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == AXIS_MIN);
+	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+
 	ie = key_event(KEY_KPPLUS, 1);	/* увеличить */
 	handle_event(&ie);
 	ie = key_event(KEY_KPPLUS, 0);
 	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 2600);
-	ie = key_event(KEY_KPPLUS, 1);	/* ещё увеличить */
-	handle_event(&ie);
-	ie = key_event(KEY_KPPLUS, 0);
-	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 5200);
-	ie = key_event(KEY_KPENTER, 1);	/* уменьшить */
-	handle_event(&ie);
-	ie = key_event(KEY_KPENTER, 0);
-	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 2600);
+	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE] + 2600);
+
+	/* Границы тяги: максимум = старт + 25 шагов = 32232, дальше игнор. */
+	{
+		int i;
+
+		for (i = 0; i < 24; i++)
+			apply_command(CMD_THROTTLE_UP);
+		assert(axis_value[AX_THROTTLE] == axis_max[AX_THROTTLE]);
+		apply_command(CMD_THROTTLE_UP);
+		assert(axis_value[AX_THROTTLE] == axis_max[AX_THROTTLE]);
+		/* 25 шагов вниз — ровно обратно на минимум: сетка сохранилась. */
+		for (i = 0; i < 25; i++)
+			apply_command(CMD_THROTTLE_DOWN);
+		assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+		apply_command(CMD_THROTTLE_DOWN);
+		assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+	}
 
 	/* Клавиша вне раскладки не двигает оси. */
 	ie = key_event(KEY_A, 1);
@@ -155,7 +180,7 @@ int main(void)
 	assert(axis_value[AX_X] == 0);
 	assert(axis_value[AX_Y] == 0);
 	assert(axis_value[AX_Z] == 0);
-	assert(axis_value[AX_THROTTLE] == AXIS_MIN + 2600);
+	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
 
 	close(uinput_fd);
 	printf("все проверки пройдены\n");
