@@ -40,31 +40,48 @@ enum axis {
 
 static const __u16 axis_code[AX_COUNT] = { ABS_X, ABS_Y, ABS_Z, ABS_RZ };
 
+/* Пределы кадра evdev: теоретические, в устройство не объявляются. */
+#define FRAME_MIN (-32768)
+#define FRAME_MAX 32767
+
 /* Шаг каждой оси за одно нажатие — задаётся отдельно для каждой оси. */
 static const int axis_step[AX_COUNT] = {
 	9830,	/* AX_X        — 15% диапазона */
 	1310,	/* AX_Y        — 2% */
-	1310,	/* AX_Z        — 2% */
+	1000,	/* AX_Z        — ~1.5% */
 	2600	/* AX_THROTTLE — 4% */
 };
 
+/* Стартовые положения: X, Y, Z — центр (0), тяга — минимум (газ убран). */
+static const int axis_start[AX_COUNT] = { 0, 0, 0, -32768 };
+
 /*
- * Рабочие границы осей — целое число шагов от стартового положения:
- *   X:    ±3×9830 = ±29490;
- *   Y, Z: ±25×1310 = ±32750;
- *   тяга: старт −32768 (минимум), максимум −32768+25×2600 = 32232.
- *
- * Эти же числа объявляются потребителям через UI_ABS_SETUP, поэтому
- * SDL/игра видят достижимый диапазон и полный ход = 100%. Нажатие за
- * границей упирается в сеточную точку — сетка не смещается, из любого
- * упора набором шагов можно вернуться в 0 (для осей с командой сброса).
+ * Рабочие границы считаются из шага: наибольшее целое число шагов от
+ * стартового положения, укладывающееся в кадр. При смене axis_step
+ * границы пересчитываются автоматически. Эти же числа объявляются
+ * потребителям через UI_ABS_SETUP, поэтому SDL/игра видят достижимый
+ * диапазон и полный ход = 100%. Нажатие за границей упирается в
+ * сеточную точку — сетка не смещается, из любого упора набором шагов
+ * можно вернуться в 0 (для осей с командой сброса).
  */
-static const int axis_min[AX_COUNT] = { -29490, -32750, -32750, -32768 };
-static const int axis_max[AX_COUNT] = {  29490,  32750,  32750,  32232 };
+static int axis_limit_min(enum axis a)
+{
+	int n = (axis_start[a] - FRAME_MIN) / axis_step[a];
+
+	return axis_start[a] - n * axis_step[a];
+}
+
+static int axis_limit_max(enum axis a)
+{
+	int n = (FRAME_MAX - axis_start[a]) / axis_step[a];
+
+	return axis_start[a] + n * axis_step[a];
+}
 
 /*
  * Текущее положение осей, хранится пока работает программа:
- * X, Y, Z стартуют в центре (0), тяга — на своём минимуме (газ убран).
+ * X, Y, Z стартуют в центре (0), тяга — на своём стартовом положении
+ * (минимум, газ убран; то же, что axis_start[AX_THROTTLE]).
  */
 static int axis_value[AX_COUNT] = { 0, 0, 0, -32768 };
 
@@ -128,10 +145,10 @@ static unsigned long pressed[LONG_COUNT(KEY_MAX + 1)];
  */
 static int clamp_axis(enum axis axis, int value)
 {
-	if (value < axis_min[axis])
-		return axis_min[axis];
-	if (value > axis_max[axis])
-		return axis_max[axis];
+	if (value < axis_limit_min(axis))
+		return axis_limit_min(axis);
+	if (value > axis_limit_max(axis))
+		return axis_limit_max(axis);
 	return value;
 }
 
@@ -318,7 +335,7 @@ static int open_keyboards(int *fds)
 	return n;
 }
 
-/* Создание виртуального джойстика: 4 оси ABS с сеточными границами axis_min/axis_max. */
+/* Создание виртуального джойстика: 4 оси ABS, границы считаются из шага. */
 static int setup_uinput(void)
 {
 	struct uinput_setup setup;
@@ -376,8 +393,8 @@ static int setup_uinput(void)
 	for (i = 0; i < AX_COUNT; i++) {
 		memset(&abs, 0, sizeof abs);
 		abs.code = axis_code[i];
-		abs.absinfo.minimum = axis_min[i];
-		abs.absinfo.maximum = axis_max[i];
+		abs.absinfo.minimum = axis_limit_min((enum axis)i);
+		abs.absinfo.maximum = axis_limit_max((enum axis)i);
 		abs.absinfo.value = axis_value[i];
 		if (ioctl(fd, UI_ABS_SETUP, &abs) < 0) {
 			perror("ioctl UI_ABS_SETUP");

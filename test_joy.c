@@ -39,7 +39,7 @@ int main(void)
 	assert(axis_value[AX_X] == 0);
 	assert(axis_value[AX_Y] == 0);
 	assert(axis_value[AX_Z] == 0);
-	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+	assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE));
 
 	/* Шаг ±9830 (15% для X). */
 	apply_command(CMD_X_DOWN);
@@ -78,21 +78,21 @@ int main(void)
 	}
 	center_all();
 
-	/* Границы Z = ±25 шагов = ±32750, возврат в 0 набором шагов. */
+	/* Границы Z = ±32 шагов = ±32000 (шаг 1000), возврат в 0 набором шагов. */
 	{
 		int i;
 
-		for (i = 0; i < 25; i++)
+		for (i = 0; i < 32; i++)
 			apply_command(CMD_Z_DOWN);
-		assert(axis_value[AX_Z] == -32750);
+		assert(axis_value[AX_Z] == -32000);
 		apply_command(CMD_Z_DOWN);
-		assert(axis_value[AX_Z] == -32750);
-		for (i = 0; i < 25; i++)
+		assert(axis_value[AX_Z] == -32000);
+		for (i = 0; i < 32; i++)
 			apply_command(CMD_Z_UP);
 		assert(axis_value[AX_Z] == 0);
 	}
 
-	/* Границы Y = ±25 шагов = ±32750 (шаг как у Z — 1310). */
+	/* Границы Y = ±25 шагов = ±32750 (шаг Y — 1310). */
 	{
 		int i;
 
@@ -148,7 +148,7 @@ int main(void)
 	ie = key_event(KEY_KP1, 0);
 	handle_event(&ie);
 	assert(axis_value[AX_Y] == -1310);	/* шаг Y — 2% */
-	assert(axis_value[AX_Z] == -1310);	/* шаг Z — 2% */
+	assert(axis_value[AX_Z] == -1000);	/* шаг Z — 1000 */
 	ie = key_event(KEY_KP7, 1);
 	handle_event(&ie);
 	assert(axis_value[AX_Y] == 0);
@@ -157,19 +157,19 @@ int main(void)
 	handle_event(&ie);
 
 	/* Тяга: старт на минимуме (якорь сетки), шаг 2600, сброса нет. */
-	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+	assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE));
 
 	ie = key_event(KEY_KPENTER, 1);	/* уменьшить — от минимума не двигается */
 	handle_event(&ie);
 	ie = key_event(KEY_KPENTER, 0);
 	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+	assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE));
 
 	ie = key_event(KEY_KPPLUS, 1);	/* увеличить */
 	handle_event(&ie);
 	ie = key_event(KEY_KPPLUS, 0);
 	handle_event(&ie);
-	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE] + 2600);
+	assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE) + 2600);
 
 	/* Границы тяги: максимум = старт + 25 шагов = 32232, дальше игнор. */
 	{
@@ -177,15 +177,15 @@ int main(void)
 
 		for (i = 0; i < 24; i++)
 			apply_command(CMD_THROTTLE_UP);
-		assert(axis_value[AX_THROTTLE] == axis_max[AX_THROTTLE]);
+		assert(axis_value[AX_THROTTLE] == axis_limit_max(AX_THROTTLE));
 		apply_command(CMD_THROTTLE_UP);
-		assert(axis_value[AX_THROTTLE] == axis_max[AX_THROTTLE]);
+		assert(axis_value[AX_THROTTLE] == axis_limit_max(AX_THROTTLE));
 		/* 25 шагов вниз — ровно обратно на минимум: сетка сохранилась. */
 		for (i = 0; i < 25; i++)
 			apply_command(CMD_THROTTLE_DOWN);
-		assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+		assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE));
 		apply_command(CMD_THROTTLE_DOWN);
-		assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+		assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE));
 	}
 
 	/* Клавиша вне раскладки не двигает оси. */
@@ -194,7 +194,7 @@ int main(void)
 	assert(axis_value[AX_X] == 0);
 	assert(axis_value[AX_Y] == 0);
 	assert(axis_value[AX_Z] == 0);
-	assert(axis_value[AX_THROTTLE] == axis_min[AX_THROTTLE]);
+	assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE));
 
 	close(uinput_fd);
 	printf("все проверки пройдены\n");
