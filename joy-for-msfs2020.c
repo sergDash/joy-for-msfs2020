@@ -104,8 +104,9 @@ enum command {
 };
 
 /*
- * Раскладка, вшитая в код. Одна клавиша может встречаться несколько раз:
- * Num7 выдаёт две команды — сброс Y и сброс Z.
+ * Раскладка, вшитая в код. Связи могут быть «многие-к-одной»:
+ * Num7 выдаёт две команды — сброс Y и сброс Z; сброс Z доступен и с
+ * Num0 (вторая клавиша на ту же команду).
  */
 static const struct binding {
 	int key;
@@ -119,6 +120,7 @@ static const struct binding {
 	{ KEY_KP2,    CMD_Y_UP },
 	{ KEY_KP1,    CMD_Z_DOWN },
 	{ KEY_KP7,    CMD_Z_CENTER },
+	{ KEY_KP0,    CMD_Z_CENTER },
 	{ KEY_KP3,    CMD_Z_UP },
 	{ KEY_KPENTER, CMD_THROTTLE_DOWN },
 	{ KEY_KPPLUS,  CMD_THROTTLE_UP }
