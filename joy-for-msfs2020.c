@@ -46,7 +46,7 @@ static const __u16 axis_code[AX_COUNT] = { ABS_X, ABS_Y, ABS_Z, ABS_RZ };
 
 /* Шаг каждой оси за одно нажатие — задаётся отдельно для каждой оси. */
 static const int axis_step[AX_COUNT] = {
-	9830,	/* AX_X        — 15% диапазона */
+	8191,	/* AX_X        — 12% диапазона */
 	1310,	/* AX_Y        — 2% */
 	1000,	/* AX_Z        — ~1.5% */
 	2600	/* AX_THROTTLE — 4% */

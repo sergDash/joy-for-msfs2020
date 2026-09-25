@@ -156,6 +156,20 @@ int main(void)
 	ie = key_event(KEY_KP7, 0);
 	handle_event(&ie);
 
+	/* KEY_KP0 — второй сброс Z; другие оси не задеты. */
+	ie = key_event(KEY_KP1, 1);
+	handle_event(&ie);
+	ie = key_event(KEY_KP1, 0);
+	handle_event(&ie);
+	assert(axis_value[AX_Z] == -1000);
+	ie = key_event(KEY_KP0, 1);
+	handle_event(&ie);
+	assert(axis_value[AX_Z] == 0);
+	assert(axis_value[AX_Y] == 0);
+	assert(axis_value[AX_X] == 0);
+	ie = key_event(KEY_KP0, 0);
+	handle_event(&ie);
+
 	/* Тяга: старт на минимуме (якорь сетки), шаг 2600, сброса нет. */
 	assert(axis_value[AX_THROTTLE] == axis_limit_min(AX_THROTTLE));
 
